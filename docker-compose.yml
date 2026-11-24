@@ -3,7 +3,7 @@
 # films one - reusing the kino webhook would overwrite the films screen.
 services:
   trmnl-kids:
-    image: ghcr.io/cpaulik/kinder-wien-trmnl:latest
+    image: ghcr.io/cpaulik/trmnl-vienna-kids-events:latest
     restart: unless-stopped
     environment:
       TRMNL_WEBHOOK_URL: ${TRMNL_KIDS_WEBHOOK_URL}
