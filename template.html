@@ -1,3 +1,23 @@
+{%- comment -%}
+  The payload carries several screens' worth of events. Which one is shown is
+  derived from the render clock, so the display keeps rotating between pushes
+  rather than only when new data arrives. A missed or delayed push therefore
+  costs freshness, not movement.
+
+  trmnl.system.timestamp_utc is the render time. Piping it through date: "%s"
+  copes with it arriving as either an epoch or an ISO string, and leaves 0 when
+  the variable is absent, which simply pins the first screen.
+{%- endcomment -%}
+{%- assign per = per | default: 4 -%}
+{%- assign rotate = rotate | default: 1800 -%}
+{%- assign total = events | size -%}
+{%- assign groups = total | divided_by: per -%}
+{%- if groups < 1 -%}{%- assign groups = 1 -%}{%- endif -%}
+{%- assign seconds = trmnl.system.timestamp_utc | date: "%s" | times: 1 -%}
+{%- assign slot = seconds | divided_by: rotate | modulo: groups -%}
+{%- assign offset = slot | times: per -%}
+{%- assign shown = events | slice: offset, per -%}
+
 <div class="layout">
   <div class="title_bar">
     <span class="title">Kinder Wien</span>
@@ -5,7 +25,7 @@
   </div>
 
   <div class="grid" style="--cols: {{ cols | default: 3 }}">
-    {% for event in events %}
+    {% for event in shown %}
     <div class="cell">
       {% if event.p %}
       <img class="photo" src="{{ event.p }}" />

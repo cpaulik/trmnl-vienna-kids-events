@@ -27,6 +27,11 @@ CACHE_FILE = Path(os.environ.get("CACHE_DIR", Path(__file__).parent)) / "events_
 SOURCE_NAMES = [s for s in os.environ.get("SOURCES", ",".join(sources.DEFAULT_ORDER)).split(",")]
 DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "4"))      # events per screen
 GRID_COLS = int(os.environ.get("GRID_COLS", "0"))              # 0 = derive from DISPLAY_COUNT
+# The payload carries several screens' worth of events and the template picks
+# which one to show from the render clock, so the display keeps rotating
+# between pushes instead of only when new data arrives.
+ROTATION_GROUPS = int(os.environ.get("ROTATION_GROUPS", "4"))   # screens per payload
+ROTATE_SECONDS = int(os.environ.get("ROTATE_SECONDS", "1800"))  # seconds per screen
 MAX_DATES = int(os.environ.get("MAX_DATES", "4"))              # dates shown per event
 MAX_DESC = int(os.environ.get("MAX_DESC", "330"))              # description chars
 RECOMMENDED_WEIGHT = float(os.environ.get("RECOMMENDED_WEIGHT", "3"))
@@ -222,22 +227,39 @@ def grid_cols(count):
     return max(count, 1)
 
 
-def build_payload(selection, today, days_ahead=None):
-    """Shape the selection, shrinking descriptions/dates until it fits TRMNL."""
+def build_payload(selection, today, days_ahead=None, per_screen=None):
+    """Shape the selection into a payload that fits TRMNL.
+
+    Tries to keep as many rotation groups as possible, dropping whole screens
+    before it starts cutting descriptions, then shrinking text if it still does
+    not fit.
+    """
     days_ahead = c.DAYS_AHEAD if days_ahead is None else days_ahead
+    per_screen = per_screen or DISPLAY_COUNT
     end = today + timedelta(days=days_ahead - 1)
     tiers = ((MAX_DESC, MAX_DATES, True), (240, 3, True), (160, 3, False), (0, 2, False))
-    for desc_limit, max_dates, with_price in tiers:
-        payload = {
-            "merge_variables": {
-                "events": [shape(e, max_dates, desc_limit, with_price) for e in selection],
-                "week": f"{today.strftime('%-d.')}–{end.strftime('%-d. %b')}",
-                "cols": grid_cols(len(selection)),
+
+    payload = size = None
+    groups = max(1, len(selection) // per_screen)
+    while groups >= 1:
+        events = selection[:groups * per_screen]
+        for desc_limit, max_dates, with_price in tiers:
+            payload = {
+                "merge_variables": {
+                    "events": [shape(e, max_dates, desc_limit, with_price) for e in events],
+                    "week": f"{today.strftime('%-d.')}–{end.strftime('%-d. %b')}",
+                    "cols": grid_cols(per_screen),
+                    "per": per_screen,
+                    "rotate": ROTATE_SECONDS,
+                }
             }
-        }
-        size = len(json.dumps(payload, ensure_ascii=False))
-        if size <= PAYLOAD_LIMIT:
-            return payload, size
+            size = len(json.dumps(payload, ensure_ascii=False))
+            # only sacrifice description quality once a screen has been dropped
+            if size <= PAYLOAD_LIMIT and (desc_limit == MAX_DESC or groups == 1):
+                return payload, size
+            if size <= PAYLOAD_LIMIT and groups > 1:
+                break
+        groups -= 1
     return payload, size
 
 
@@ -271,12 +293,16 @@ def main():
         print("No events found, aborting.")
         return 1
 
-    selection = pick(pool, DISPLAY_COUNT)
+    selection = pick(pool, DISPLAY_COUNT * ROTATION_GROUPS)
     payload, size = build_payload(selection, now.date())
 
-    print(f"Selected {len(selection)} of {len(pool)} events ({size} bytes):")
-    for e in payload["merge_variables"]["events"]:
-        print(f"  - [{e.get('s', '?')}] {e['t']} @ {e.get('v', '?')} "
+    events = payload["merge_variables"]["events"]
+    screens = len(events) // DISPLAY_COUNT
+    print(f"Sending {len(events)} of {len(pool)} events as {screens} screen(s) of "
+          f"{DISPLAY_COUNT}, rotating every {ROTATE_SECONDS}s ({size} bytes):")
+    for i, e in enumerate(events):
+        marker = "\n  --" if i and i % DISPLAY_COUNT == 0 else ""
+        print(f"{marker}  - [{e.get('s', '?')}] {e['t']} @ {e.get('v', '?')} "
               f"({len(e.get('d', []))} dates)")
     if size > PAYLOAD_LIMIT:
         print(f"WARNING: payload over {PAYLOAD_LIMIT} bytes, TRMNL may reject it.")

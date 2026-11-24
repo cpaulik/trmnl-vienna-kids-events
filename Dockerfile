@@ -11,7 +11,8 @@ COPY sources ./sources
 ENV CACHE_DIR=/cache
 # Dates and the week label should follow Vienna time
 ENV TZ=Europe/Vienna
-# Interval between runs in seconds (default: 30 min)
-ENV INTERVAL=1800
+# Interval between runs in seconds (default: 2h; the template rotates between
+# the screens in each payload every 30 min, so pushes do not need to be frequent)
+ENV INTERVAL=7200
 
 CMD ["sh", "-c", "while true; do python scraper.py; sleep $INTERVAL; done"]

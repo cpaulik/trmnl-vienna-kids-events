@@ -53,7 +53,7 @@ pushes per hour. The daily pool lives in a named volume, so a restart doesn't re
 ### 2. GitHub Actions, no host at all
 
 `.github/workflows/push.yml` does the same job on GitHub's schedule. Set the repository secret
-`TRMNL_WEBHOOK_URL` and it runs every 30 minutes, caching the daily pool with `actions/cache`
+`TRMNL_WEBHOOK_URL` and it runs every two hours, caching the daily pool with `actions/cache`
 keyed on the Vienna date, so only the first run of each day scrapes.
 
 What you give up:
@@ -75,6 +75,35 @@ update — but the screen only changes when the file does, so rotation still dep
 often the Action runs, unless the template shuffles a larger pool client-side. Actions is
 doing the real work in this setup either way.
 
+## Rotation without frequent pushes
+
+Each payload carries **several screens' worth of events**, and the template decides which one
+to show from `trmnl.system.timestamp_utc`, the render clock. The display therefore keeps
+changing every `ROTATE_SECONDS` even when nothing has been pushed, so a late, missed or
+dropped run costs freshness rather than movement — which is what makes the GitHub Actions
+option viable despite its best-effort scheduler.
+
+That is why `INTERVAL` is two hours rather than thirty minutes: the device still shows
+something different every half hour.
+
+How many screens fit depends on how wordy the selected events are, so `build_payload` works it
+out per run: it keeps the most screens it can **at full description length**, and only shortens
+text once it is down to a single screen. Measured against a live pool on the 5 kB tier:
+
+| screens | events | description cap | bytes | fits 5 kB | descriptions truncated |
+|---|---|---|---|---|---|
+| 2 | 8 | 330 | 3610 | yes | 17% |
+| 3 | 12 | 160 | 4782 | barely | 54% |
+| 4 | 16 | none | 4126 | yes | 100% |
+| 5 | 20 | — | 7822 | no | — |
+
+So two to three screens is the realistic range here. On TRMNL+ (10 kB) raise `PAYLOAD_LIMIT`
+and four screens at full length fit without any other change.
+
+If the template ever renders without `trmnl.system.timestamp_utc`, the slot computes to 0 and
+the first screen shows — the markup degrades to the old single-screen behaviour rather than
+breaking.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -89,6 +118,8 @@ doing the real work in this setup either way.
 | `REGION` | `Wien` | Falter region filter |
 | `SKIP_CATEGORIES` | `Vortrag / Diskussion` | Comma-separated categories to ignore |
 | `RECOMMENDED_WEIGHT` | `3` | Pick weight for Falter recommendations |
+| `ROTATION_GROUPS` | `4` | Screens to attempt per payload; trimmed to what fits |
+| `ROTATE_SECONDS` | `1800` | How long each screen is shown before the next |
 | `MAX_DATES` | `4` | Upcoming dates shown per event |
 | `MAX_DESC` | `330` | Description characters before trimming |
 | `CACHE_DATES` | `8` | Upcoming dates kept per event in the cache |

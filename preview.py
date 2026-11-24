@@ -20,7 +20,7 @@ Usage:
 import argparse
 import json
 import random
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from liquid import Environment
@@ -77,15 +77,24 @@ SHOT = """<div class="shot">
 </div>"""
 
 
-def render(pool, env, template_src, today, count):
-    selection = scraper.pick(pool, count)
-    payload, size = scraper.build_payload(selection, today)
-    html = env.render(template_src, payload["merge_variables"])
+def render(pool, env, template_src, today, count, timestamp=None):
+    selection = scraper.pick(pool, count * scraper.ROTATION_GROUPS)
+    payload, size = scraper.build_payload(selection, today, per_screen=count)
+    return render_payload(payload, env, template_src, timestamp) + (size,)
+
+
+def render_payload(payload, env, template_src, timestamp=None):
+    """Render one payload, optionally pinned to a given render clock."""
+    context = dict(payload["merge_variables"])
+    if timestamp is not None:
+        context["trmnl"] = {"system": {"timestamp_utc": timestamp}}
+    html = env.render(template_src, context)
     events = payload["merge_variables"]["events"]
+    shown = html.count('class="cell"')
     photos = sum(1 for e in events if e.get("p"))
-    caption = (f"{size} Bytes &middot; {photos}/{len(events)} mit Foto &middot; "
+    caption = (f"{shown} von {len(events)} Events &middot; {photos} mit Foto &middot; "
                + ", ".join(sorted({e.get("s", "?") for e in events})))
-    return html, caption, size
+    return html, caption
 
 
 def main():
@@ -98,6 +107,8 @@ def main():
     ap.add_argument("--sources", help="only pick events from these sources (LABEL names)")
     ap.add_argument("--with-nophoto", action="store_true",
                     help="append a frame built only from events without a photo")
+    ap.add_argument("--slots", type=int, default=0,
+                    help="render one payload at N successive rotation slots")
     ap.add_argument("--serve", type=int, metavar="PORT", help="serve the preview over HTTP")
     ap.add_argument("--out", default=str(HERE / "preview.html"))
     args = ap.parse_args()
@@ -128,15 +139,32 @@ def main():
         w, h, label = DEVICES[device]
         for count in counts:
             shots = []
-            for i in range(args.samples):
-                html, caption, size = render(pool, env, template_src, today, count)
-                shots.append(SHOT.format(w=w, h=h, html=html,
-                                         caption=f"#{i + 1} &middot; {caption}"))
-                print(f"  {device} / {count} events / sample {i + 1}: {size} bytes")
+            if args.slots:
+                # one payload, rendered at successive render clocks: this is what
+                # the device does between pushes
+                selection = scraper.pick(pool, count * scraper.ROTATION_GROUPS)
+                payload, size = scraper.build_payload(selection, today, per_screen=count)
+                mv = payload["merge_variables"]
+                screens = max(1, len(mv["events"]) // count)
+                print(f"  {device}: one payload, {size} bytes, {len(mv['events'])} events "
+                      f"= {screens} screens, rotating every {mv['rotate']}s")
+                base = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
+                for i in range(args.slots):
+                    ts = base + i * mv["rotate"]
+                    html, caption = render_payload(payload, env, template_src, ts)
+                    label = f"Slot {i + 1} von {screens} &middot; {caption}"
+                    shots.append(SHOT.format(w=w, h=h, html=html, caption=label))
+            else:
+                for i in range(args.samples):
+                    html, caption, size = render(pool, env, template_src, today, count)
+                    shots.append(SHOT.format(w=w, h=h, html=html,
+                                             caption=f"#{i + 1} &middot; {caption}"))
+                    print(f"  {device} / {count} events / sample {i + 1}: {size} bytes")
             if args.with_nophoto:
                 bare = [e for e in cache["events"] if not e.get("p")]
                 if bare:
                     html, caption, size = render(bare, env, template_src, today, count)
+                    _ = size
                     shots.append(SHOT.format(w=w, h=h, html=html,
                                              caption=f"ohne Foto &middot; {caption}"))
                     print(f"  {device} / {count} events / no-photo: {size} bytes")

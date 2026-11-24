@@ -5,7 +5,9 @@ name: Push events to TRMNL
 #
 # Caveats worth knowing before relying on this:
 #   - schedule is best effort. Runs are delayed under load and occasionally
-#     dropped entirely, so treat the cadence as "roughly every 30 minutes".
+#     dropped entirely. That matters much less here than it looks: each payload
+#     carries several screens and the template rotates between them on its own
+#     clock, so a late or missed run costs freshness, not movement.
 #   - GitHub disables scheduled workflows in a public repository after 60 days
 #     without activity. keepalive.yml exists to prevent that.
 #   - minutes are free on public repositories. On a private one, 48 runs a day
@@ -13,7 +15,7 @@ name: Push events to TRMNL
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "7 */2 * * *"
   workflow_dispatch:
 
 concurrency:
