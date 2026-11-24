@@ -25,10 +25,10 @@ from sources import common as c
 
 CACHE_FILE = Path(os.environ.get("CACHE_DIR", Path(__file__).parent)) / "events_cache.json"
 SOURCE_NAMES = [s for s in os.environ.get("SOURCES", ",".join(sources.DEFAULT_ORDER)).split(",")]
-DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "6"))      # events per screen
+DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "4"))      # events per screen
 GRID_COLS = int(os.environ.get("GRID_COLS", "0"))              # 0 = derive from DISPLAY_COUNT
 MAX_DATES = int(os.environ.get("MAX_DATES", "4"))              # dates shown per event
-MAX_DESC = int(os.environ.get("MAX_DESC", "200"))              # description chars
+MAX_DESC = int(os.environ.get("MAX_DESC", "330"))              # description chars
 RECOMMENDED_WEIGHT = float(os.environ.get("RECOMMENDED_WEIGHT", "3"))
 # TRMNL accepts 5kb of merge variables, 10kb for TRMNL+ subscribers
 PAYLOAD_LIMIT = int(os.environ.get("PAYLOAD_LIMIT", "4800"))
@@ -226,7 +226,7 @@ def build_payload(selection, today, days_ahead=None):
     """Shape the selection, shrinking descriptions/dates until it fits TRMNL."""
     days_ahead = c.DAYS_AHEAD if days_ahead is None else days_ahead
     end = today + timedelta(days=days_ahead - 1)
-    tiers = ((MAX_DESC, MAX_DATES, True), (160, 3, True), (120, 2, False), (0, 2, False))
+    tiers = ((MAX_DESC, MAX_DATES, True), (240, 3, True), (160, 3, False), (0, 2, False))
     for desc_limit, max_dates, with_price in tiers:
         payload = {
             "merge_variables": {

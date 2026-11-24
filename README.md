@@ -1,7 +1,7 @@
 # Kinder Wien TRMNL
 
-A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Six events are
-picked at random each run and shown in a 3×2 grid with photo, venue and district, category,
+A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Four events are
+picked at random each run and shown in a 2×2 grid with photo, venue and district, category,
 age requirement, price, short description, upcoming dates and the source they came from.
 
 Sibling plugin to [Kino-Wien-TRMNL](https://github.com/cpaulik/Kino-Wien-TRMNL), same shape:
@@ -61,14 +61,14 @@ instant.
 | `INTERVAL` | `1800` | Seconds between runs |
 | `SOURCES` | all five | Comma-separated: `falter,wienxtra,umweltspuernasen,wiengv,tmw` |
 | `MAX_AGE_REQUIREMENT` | `4` | Drop events that require a higher minimum age |
-| `DISPLAY_COUNT` | `6` | Events per screen |
+| `DISPLAY_COUNT` | `4` | Events per screen |
 | `GRID_COLS` | auto | Grid columns; `0` derives them from `DISPLAY_COUNT` |
 | `DAYS_AHEAD` | `7` | Length of the event window, starting today |
 | `REGION` | `Wien` | Falter region filter |
 | `SKIP_CATEGORIES` | `Vortrag / Diskussion` | Comma-separated categories to ignore |
 | `RECOMMENDED_WEIGHT` | `3` | Pick weight for Falter recommendations |
 | `MAX_DATES` | `4` | Upcoming dates shown per event |
-| `MAX_DESC` | `200` | Description characters before trimming |
+| `MAX_DESC` | `330` | Description characters before trimming |
 | `CACHE_DATES` | `8` | Upcoming dates kept per event in the cache |
 | `FETCH_DELAY` | `0.4` | Seconds between requests |
 | `PAYLOAD_LIMIT` | `4800` | Byte budget for the webhook payload (TRMNL allows 5 KB, 10 KB with TRMNL+) |
@@ -94,6 +94,11 @@ than a short cell in a 3×2 grid.
 
 `DISPLAY_COUNT` alone decides the density — the scraper sends a `cols` merge variable
 (6 → 3×2, 4 → 2×2, 3 → 1×3), which the grid reads as `--cols`. Override with `GRID_COLS`.
+
+The photo band is deliberately short (23% of the card) so the text, not the picture, gets the
+space. Description length is tuned so the server-side trim and the CSS clamp roughly coincide:
+at four events per screen a card fits about five lines, and `MAX_DESC` is set so only the
+longest ~17% of descriptions end in an ellipsis.
 
 Event photos are landscape (1.25–1.78 aspect), unlike film posters, so each card carries the
 photo as a band across the top rather than in a portrait poster slot. Roughly 80% of events

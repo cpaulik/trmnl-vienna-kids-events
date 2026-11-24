@@ -103,7 +103,7 @@
      is a band across the top of the card rather than a portrait slot. */
   .photo {
     width: 100%;
-    height: 30cqh;
+    height: 23cqh;
     object-fit: cover;
     object-position: center 40%;
     flex-shrink: 0;
@@ -157,21 +157,21 @@
     line-height: 1.28;
     margin-top: 0.6cqh;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
 
   /* no photo: the text gets the whole card */
   .info-tall .event-desc {
-    -webkit-line-clamp: 7;
+    -webkit-line-clamp: 10;
   }
 
   /* single-row layouts give each card a tall cell - spend it on prose */
   @container (min-height: 480px) {
-    .photo { height: 24cqh; }
-    .event-desc { -webkit-line-clamp: 9; }
-    .info-tall .event-desc { -webkit-line-clamp: 16; }
+    .photo { height: 20cqh; }
+    .event-desc { -webkit-line-clamp: 12; }
+    .info-tall .event-desc { -webkit-line-clamp: 20; }
   }
 
   .dates {
