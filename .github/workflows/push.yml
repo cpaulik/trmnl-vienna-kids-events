@@ -27,17 +27,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # Without this the schedule fails every two hours on a repo that is
+      # deployed by Docker instead, which is noise rather than information.
+      - name: Skip unless a webhook is configured
+        id: guard
+        env:
+          TRMNL_WEBHOOK_URL: ${{ secrets.TRMNL_WEBHOOK_URL }}
+        run: |
+          if [ -z "$TRMNL_WEBHOOK_URL" ]; then
+            echo "No TRMNL_WEBHOOK_URL secret set - this repo is presumably run"
+            echo "from Docker instead. Nothing to do."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.configured == 'true'
 
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.configured == 'true'
         with:
           python-version: "3.12"
 
       - name: Install dependencies
+        if: steps.guard.outputs.configured == 'true'
         run: pip install --no-cache-dir requests beautifulsoup4
 
       - name: Resolve today in Vienna time
         id: date
+        if: steps.guard.outputs.configured == 'true'
         run: echo "today=$(TZ=Europe/Vienna date +%F)" >> "$GITHUB_OUTPUT"
 
       # The pool is scraped once a day and reused. Without this, every run would
@@ -46,11 +65,13 @@ jobs:
       # every later run hits it exactly and skips the scrape.
       - name: Restore today's event pool
         uses: actions/cache@v4
+        if: steps.guard.outputs.configured == 'true'
         with:
           path: cache
           key: events-${{ steps.date.outputs.today }}
 
       - name: Push a screen
+        if: steps.guard.outputs.configured == 'true'
         env:
           TRMNL_WEBHOOK_URL: ${{ secrets.TRMNL_WEBHOOK_URL }}
           CACHE_DIR: cache
