@@ -1,0 +1,13 @@
+services:
+  trmnl-kids:
+    image: ghcr.io/cpaulik/kinder-wien-trmnl:latest
+    restart: unless-stopped
+    environment:
+      TRMNL_WEBHOOK_URL: ${TRMNL_WEBHOOK_URL}
+      INTERVAL: 1800
+      MAX_AGE_REQUIREMENT: 4
+    volumes:
+      - cache:/cache
+
+volumes:
+  cache:
