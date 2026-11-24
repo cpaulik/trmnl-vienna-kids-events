@@ -33,32 +33,54 @@ Each source is a module in `sources/` exposing `fetch(now, window_end)` and an o
 - Falter recommendations are weighted `RECOMMENDED_WEIGHT`× when picking
 - The payload shrinks descriptions and date lists as needed to stay under TRMNL's 2 KB limit
 
-## Running with Docker
+## Deployment
 
-Create a `.env` file next to the compose file:
+Three ways to run it, in the order I'd pick them.
 
-```
-TRMNL_WEBHOOK_URL=https://usetrmnl.com/api/custom_plugins/YOUR_PLUGIN_ID
-```
+### 1. Docker, next to the films plugin (recommended)
 
-Then start the container:
+Same pattern as `trmnl-kino` on arcane: add the service in `docker-compose.yml` and give it
+its **own** webhook UUID — the kids plugin is a separate private plugin, so reusing the films
+webhook would overwrite that screen.
 
 ```bash
 docker compose up -d
 ```
 
-The scraper runs immediately on start and then every 30 minutes, which sits well inside
-TRMNL's webhook rate limit of 12 pushes per hour (30 with TRMNL+). The daily event pool is
-cached in a named Docker volume so restarts don't re-fetch unnecessarily. A full scrape takes
-a few minutes (roughly 250 requests, paced by `FETCH_DELAY`); the other 47 runs of the day are
-instant.
+The scraper runs on start and then every `INTERVAL` seconds, well inside TRMNL's limit of 12
+pushes per hour. The daily pool lives in a named volume, so a restart doesn't re-scrape.
+
+### 2. GitHub Actions, no host at all
+
+`.github/workflows/push.yml` does the same job on GitHub's schedule. Set the repository secret
+`TRMNL_WEBHOOK_URL` and it runs every 30 minutes, caching the daily pool with `actions/cache`
+keyed on the Vienna date, so only the first run of each day scrapes.
+
+What you give up:
+
+- **The schedule is best effort.** Runs get delayed under load and are sometimes dropped, so
+  the cadence is "roughly every 30 minutes", not on the clock.
+- **Public-repo schedules switch off after 60 days without repository activity**, with only a
+  banner to tell you. `keepalive.yml` commits a heartbeat monthly to prevent it.
+- **Minutes are only free on a public repository.** 48 runs a day will blow through the free
+  tier on a private one.
+
+### 3. GitHub Pages — only via the Polling strategy
+
+Pages cannot run code, so it can't push anything by itself. It works only by inverting the
+flow: a scheduled Action writes a static `data.json`, Pages serves it, and the plugin uses
+TRMNL's **Polling** strategy to fetch that URL on its own refresh interval. That is more
+resilient to a missed Action — the device re-reads slightly stale JSON instead of missing an
+update — but the screen only changes when the file does, so rotation still depends on how
+often the Action runs, unless the template shuffles a larger pool client-side. Actions is
+doing the real work in this setup either way.
 
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
 | `TRMNL_WEBHOOK_URL` | required | Your TRMNL private plugin webhook URL |
-| `INTERVAL` | `1800` | Seconds between runs |
+| `INTERVAL` | `1800` | Seconds between runs (Docker only; TRMNL allows 12 pushes/hour) |
 | `SOURCES` | all five | Comma-separated: `falter,wienxtra,umweltspuernasen,wiengv,tmw` |
 | `MAX_AGE_REQUIREMENT` | `4` | Drop events that require a higher minimum age |
 | `DISPLAY_COUNT` | `4` | Events per screen |

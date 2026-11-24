@@ -1,0 +1,60 @@
+name: Push events to TRMNL
+
+# Alternative to running the container: GitHub does the scheduling.
+# Needs the repository secret TRMNL_WEBHOOK_URL.
+#
+# Caveats worth knowing before relying on this:
+#   - schedule is best effort. Runs are delayed under load and occasionally
+#     dropped entirely, so treat the cadence as "roughly every 30 minutes".
+#   - GitHub disables scheduled workflows in a public repository after 60 days
+#     without activity. keepalive.yml exists to prevent that.
+#   - minutes are free on public repositories. On a private one, 48 runs a day
+#     will exceed the free tier.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: trmnl-push
+  cancel-in-progress: false
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir requests beautifulsoup4
+
+      - name: Resolve today in Vienna time
+        id: date
+        run: echo "today=$(TZ=Europe/Vienna date +%F)" >> "$GITHUB_OUTPUT"
+
+      # The pool is scraped once a day and reused. Without this, every run would
+      # re-fetch a few hundred pages, which is slow and impolite to the sources.
+      # Keyed on the date: the first run of the day misses and saves the pool,
+      # every later run hits it exactly and skips the scrape.
+      - name: Restore today's event pool
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: events-${{ steps.date.outputs.today }}
+
+      - name: Push a screen
+        env:
+          TRMNL_WEBHOOK_URL: ${{ secrets.TRMNL_WEBHOOK_URL }}
+          CACHE_DIR: cache
+          TZ: Europe/Vienna
+          DISPLAY_COUNT: "4"
+          MAX_AGE_REQUIREMENT: "4"
+        run: |
+          mkdir -p cache
+          python scraper.py
