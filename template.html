@@ -21,6 +21,7 @@
           {% for d in event.d %}
           <span class="date">{{ d.dat }} {{ d.ti }}</span>
           {% endfor %}
+          <span class="source">{% if event.x %}{{ event.x }} · {% endif %}{{ event.s }}</span>
         </div>
       </div>
     </div>
@@ -150,6 +151,18 @@
     color: #555;
     line-height: 1.3;
     font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .source {
+    font-size: 10px;
+    color: #999;
+    line-height: 1.3;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-top: 1px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

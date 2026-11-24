@@ -5,6 +5,7 @@ WORKDIR /app
 RUN pip install --no-cache-dir requests beautifulsoup4
 
 COPY scraper.py .
+COPY sources ./sources
 
 # Cache file lives in /cache so callers can mount a volume there
 ENV CACHE_DIR=/cache

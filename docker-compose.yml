@@ -6,6 +6,7 @@ services:
       TRMNL_WEBHOOK_URL: ${TRMNL_WEBHOOK_URL}
       INTERVAL: 1800
       MAX_AGE_REQUIREMENT: 4
+      # SOURCES: falter,wienxtra,umweltspuernasen,wiengv,tmw
     volumes:
       - cache:/cache
 

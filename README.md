@@ -1,25 +1,37 @@
 # Kinder Wien TRMNL
 
-A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna from Falter.at's
-"4 Kids" listings. Four events are picked at random each run and shown in a 2×2 grid with
-photo, venue and district, category, age requirement, short description and upcoming dates.
+A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Four events are
+picked at random each run and shown in a 2×2 grid with photo, venue and district, category,
+age requirement, price, short description, upcoming dates and the source they came from.
 
 Sibling plugin to [Kino-Wien-TRMNL](https://github.com/cpaulik/Kino-Wien-TRMNL), same shape:
 scrape → cache → random selection → webhook.
 
+## Sources
+
+| Source | What it gives | How |
+|---|---|---|
+| **Falter** "4 Kids" | the bulk of the pool, recommendations marked ★ | search pages + detail pages with schema.org microdata |
+| **WienXtra** Kinderinfo | curated kids offers, free/registration badges, recurring series | static Bootstrap cards |
+| **Umweltspürnasen** | nature exploration events ("Kleinchenaktion 3-6") | WordPress AJAX API (nonce + POST), description from the event page |
+| **Stadt Wien** "Wien erleben" | city events flagged *Für Kinder* | `veranstaltungen.json` + JSON-LD on the detail pages |
+| **Technisches Museum** | museum programme for *Kinder & Familie* | JSON-LD on the programme page |
+
+Each source is a module in `sources/` exposing `fetch(now, window_end)` and an optional
+`enrich(event)`. A source that fails is reported and skipped — the run continues with the rest.
+
 ## How it works
 
-- Scrapes `falter.at/events/suche?is_4kids=true&region=Wien` for the next 7 days
-- Falter recommendations first; if fewer than `MIN_POOL` survive filtering, the full kids
-  listing is added as well (recommendations keep a 3× chance of being picked and are marked ★)
-- Each event's detail page provides the description, the age requirement (e.g. "ab 6 J."),
-  the venue address and all upcoming dates
-- Events requiring an age above `MAX_AGE_REQUIREMENT` are dropped — events with no stated
-  age requirement are kept
+- Events from all sources are normalized to one record shape, then filtered:
+  - minimum age above `MAX_AGE_REQUIREMENT` is dropped (events with no stated age are kept)
+  - categories in `SKIP_CATEGORIES` are dropped (adult panel talks filed under "kids")
+  - dates outside the window or already past are dropped
+- Duplicates across sources are merged by title; the first source wins and the others only
+  fill its empty fields (so a Falter event can inherit a WienXtra "Gratis" badge)
 - The whole pool is cached once per day; every run only picks a new random selection,
-  skipping dates that have already passed
-- POSTs the selection to your TRMNL webhook, shrinking descriptions and date lists if
-  needed to stay under TRMNL's 2 KB payload limit
+  so the display rotates without re-scraping
+- Falter recommendations are weighted `RECOMMENDED_WEIGHT`× when picking
+- The payload shrinks descriptions and date lists as needed to stay under TRMNL's 2 KB limit
 
 ## Running with Docker
 
@@ -36,7 +48,9 @@ docker compose up -d
 ```
 
 The scraper runs immediately on start and then every 30 minutes. The daily event pool is
-cached in a named Docker volume so restarts don't re-fetch unnecessarily.
+cached in a named Docker volume so restarts don't re-fetch unnecessarily. A full scrape takes
+a few minutes (roughly 250 requests, paced by `FETCH_DELAY`); the other 47 runs of the day are
+instant.
 
 ## Configuration
 
@@ -44,17 +58,21 @@ cached in a named Docker volume so restarts don't re-fetch unnecessarily.
 |---|---|---|
 | `TRMNL_WEBHOOK_URL` | required | Your TRMNL private plugin webhook URL |
 | `INTERVAL` | `1800` | Seconds between runs |
+| `SOURCES` | all five | Comma-separated: `falter,wienxtra,umweltspuernasen,wiengv,tmw` |
 | `MAX_AGE_REQUIREMENT` | `4` | Drop events that require a higher minimum age |
 | `DISPLAY_COUNT` | `4` | Events per screen (2×2 grid) |
 | `DAYS_AHEAD` | `7` | Length of the event window, starting today |
 | `REGION` | `Wien` | Falter region filter |
-| `RECOMMENDED_ONLY` | `true` | Start from Falter recommendations |
-| `MIN_POOL` | `12` | Below this, widen to all kids events |
+| `SKIP_CATEGORIES` | `Vortrag / Diskussion` | Comma-separated categories to ignore |
+| `RECOMMENDED_WEIGHT` | `3` | Pick weight for Falter recommendations |
 | `MAX_DATES` | `4` | Upcoming dates shown per event |
 | `MAX_DESC` | `200` | Description characters before trimming |
-| `SKIP_CATEGORIES` | `Vortrag / Diskussion` | Comma-separated categories to ignore |
-| `FETCH_DELAY` | `0.4` | Seconds between detail-page requests |
+| `CACHE_DATES` | `8` | Upcoming dates kept per event in the cache |
+| `FETCH_DELAY` | `0.4` | Seconds between requests |
+| `PAYLOAD_LIMIT` | `2000` | Byte budget for the webhook payload |
 | `CACHE_DIR` | script dir | Where `events_cache.json` lives |
+| `FALTER_MIN_RECOMMENDED` | `12` | Below this many age-appropriate recommendations, Falter widens to its full kids listing |
+| `WIENGV_MAX_DETAILS` | `140` | Cap on Stadt Wien detail-page fetches per day |
 
 ## TRMNL plugin setup
 
@@ -67,8 +85,11 @@ cached in a named Docker volume so restarts don't re-fetch unnecessarily.
 ```bash
 uv venv .venv && uv pip install -p .venv/bin/python requests beautifulsoup4 python-liquid
 
-# scrape and print the payload without posting anything
+# scrape everything and print the payload without posting
 .venv/bin/python scraper.py --dry-run --refresh
+
+# work on one source at a time
+.venv/bin/python scraper.py --dry-run --refresh --sources wienxtra
 
 # render template.html with cached data into preview.html for a browser check
 .venv/bin/python preview.py --seed 3
