@@ -25,7 +25,7 @@ from sources import common as c
 
 CACHE_FILE = Path(os.environ.get("CACHE_DIR", Path(__file__).parent)) / "events_cache.json"
 SOURCE_NAMES = [s for s in os.environ.get("SOURCES", ",".join(sources.DEFAULT_ORDER)).split(",")]
-DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "4"))      # 2x2 quadrants on TRMNL
+DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "3"))      # one column per event
 MAX_DATES = int(os.environ.get("MAX_DATES", "4"))              # dates shown per event
 MAX_DESC = int(os.environ.get("MAX_DESC", "200"))              # description chars
 RECOMMENDED_WEIGHT = float(os.environ.get("RECOMMENDED_WEIGHT", "3"))

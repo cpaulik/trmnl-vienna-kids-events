@@ -5,11 +5,16 @@ layout can be checked in a browser before pushing anything to TRMNL.
 
 Needs the Liquid renderer that TRMNL uses:  uv pip install python-liquid
 
+Device frames (landscape is the TRMNL default):
+  og  800x480   TRMNL OG, 1-bit
+  v2  1040x780  TRMNL V2, 4-bit
+
 Usage:
-  python preview.py                       # 3 random samples
-  python preview.py --samples 4 --seed 7
-  python preview.py --sources TMW,Umweltspürnasen   # force the no-photo case
-  python preview.py --serve 8080          # serve the result over HTTP
+  python preview.py                                  # OG frame, 3 events, 3 samples
+  python preview.py --device v2 --events 4
+  python preview.py --device og,v2 --events 3,4      # compare frames and densities
+  python preview.py --sources TMW --with-nophoto
+  python preview.py --serve 8137
 """
 import argparse
 import json
@@ -23,48 +28,59 @@ import scraper
 
 HERE = Path(__file__).parent
 
+DEVICES = {
+    "og": (800, 480, "TRMNL OG 800×480 (1-bit)"),
+    "v2": (1040, 780, "TRMNL V2 1040×780 (4-bit)"),
+}
+
 PAGE = """<!doctype html>
 <html lang="de">
 <head>
 <meta charset="utf-8">
 <title>Kinder Wien TRMNL - Layout-Vorschau</title>
 <style>
-  body {{ margin: 0; padding: 24px; background: #2b2b2b; color: #eee;
-         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-  h1 {{ font-size: 18px; font-weight: 600; margin: 0 0 4px; }}
-  p.note {{ font-size: 13px; color: #aaa; margin: 0 0 20px; }}
-  .frames {{ display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; }}
-  .frame {{ width: {fw}px; height: {fh}px; overflow: hidden;
-            box-shadow: 0 6px 24px rgba(0,0,0,.5); background: #fff; }}
-  .frame > .scaler {{ transform: scale({scale}); transform-origin: top left; }}
-  .caption {{ font-size: 12px; color: #999; margin: 6px 0 0; }}
-  .shot {{ display: flex; flex-direction: column; }}
+  body { margin: 0; padding: 24px; background: #2b2b2b; color: #eee;
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  p.note { font-size: 13px; color: #aaa; margin: 0 0 20px; max-width: 900px; }
+  h2 { font-size: 14px; font-weight: 600; color: #ddd; margin: 26px 0 10px;
+       border-bottom: 1px solid #444; padding-bottom: 6px; }
+  .frames { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  .shot { display: flex; flex-direction: column; }
+  .frame { overflow: hidden; background: #fff;
+           box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+  .caption { font-size: 12px; color: #999; margin: 6px 0 0; }
 </style>
 </head>
 <body>
-<h1>Kinder Wien &mdash; TRMNL 1030&times;1404, {n} Varianten</h1>
-<p class="note">Jeder Rahmen ist ein echter Render des Plugin-Templates, auf {pct}% skaliert.
-Auf dem Gerät erscheint das Ganze in Graustufen-E-Ink.</p>
-<div class="frames">
-{shots}
-</div>
+<h1>Kinder Wien &mdash; Layout-Vorschau</h1>
+<p class="note">Echte Renders des Plugin-Templates, 1:1 in Gerätegröße. Das Template ist
+fluid (kein fixes Format), deshalb füllt dasselbe Markup jedes Gerät.
+Auf dem Gerät erscheint alles in Graustufen-E-Ink.</p>
+GROUPS
 </body>
 </html>
 """
 
+GROUP = """<h2>{heading}</h2>
+<div class="frames">
+{shots}
+</div>"""
+
 SHOT = """<div class="shot">
-  <div class="frame"><div class="scaler">{html}</div></div>
+  <div class="frame" style="width:{w}px;height:{h}px">{html}</div>
   <p class="caption">{caption}</p>
 </div>"""
 
 
-def render(pool, env, template_src, today):
-    selection = scraper.pick(pool, scraper.DISPLAY_COUNT)
+def render(pool, env, template_src, today, count):
+    selection = scraper.pick(pool, count)
     payload, size = scraper.build_payload(selection, today)
     html = env.render(template_src, payload["merge_variables"])
-    photos = sum(1 for e in payload["merge_variables"]["events"] if e.get("p"))
-    caption = (f"{size} Bytes &middot; {photos}/{len(selection)} mit Foto &middot; "
-               + ", ".join(sorted({e.get("s", "?") for e in payload["merge_variables"]["events"]})))
+    events = payload["merge_variables"]["events"]
+    photos = sum(1 for e in events if e.get("p"))
+    caption = (f"{size} Bytes &middot; {photos}/{len(events)} mit Foto &middot; "
+               + ", ".join(sorted({e.get("s", "?") for e in events})))
     return html, caption, size
 
 
@@ -72,7 +88,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--samples", type=int, default=3)
-    ap.add_argument("--scale", type=float, default=0.5)
+    ap.add_argument("--device", default="og", help="og, v2 or a comma-separated list")
+    ap.add_argument("--events", default=None,
+                    help="events per screen; comma-separated list to compare")
     ap.add_argument("--sources", help="only pick events from these sources (LABEL names)")
     ap.add_argument("--with-nophoto", action="store_true",
                     help="append a frame built only from events without a photo")
@@ -95,25 +113,35 @@ def main():
     template_src = (HERE / "template.html").read_text()
     today = date.today()
 
-    shots = []
-    for i in range(args.samples):
-        html, caption, size = render(pool, env, template_src, today)
-        shots.append(SHOT.format(html=html, caption=f"#{i + 1} &middot; {caption}"))
-        print(f"  sample {i + 1}: {size} bytes")
+    devices = [d.strip().lower() for d in args.device.split(",") if d.strip()]
+    counts = ([int(n) for n in args.events.split(",")] if args.events
+              else [scraper.DISPLAY_COUNT])
 
-    if args.with_nophoto:
-        bare = [e for e in cache["events"] if not e.get("p")]
-        if bare:
-            html, caption, size = render(bare, env, template_src, today)
-            shots.append(SHOT.format(html=html, caption=f"ohne Foto &middot; {caption}"))
-            print(f"  no-photo sample: {size} bytes")
+    groups = []
+    for device in devices:
+        if device not in DEVICES:
+            raise SystemExit(f"unknown device '{device}', known: {', '.join(DEVICES)}")
+        w, h, label = DEVICES[device]
+        for count in counts:
+            shots = []
+            for i in range(args.samples):
+                html, caption, size = render(pool, env, template_src, today, count)
+                shots.append(SHOT.format(w=w, h=h, html=html,
+                                         caption=f"#{i + 1} &middot; {caption}"))
+                print(f"  {device} / {count} events / sample {i + 1}: {size} bytes")
+            if args.with_nophoto:
+                bare = [e for e in cache["events"] if not e.get("p")]
+                if bare:
+                    html, caption, size = render(bare, env, template_src, today, count)
+                    shots.append(SHOT.format(w=w, h=h, html=html,
+                                             caption=f"ohne Foto &middot; {caption}"))
+                    print(f"  {device} / {count} events / no-photo: {size} bytes")
+            groups.append(GROUP.format(
+                heading=f"{label} &mdash; {count} Events pro Screen",
+                shots="\n".join(shots)))
 
-    page = PAGE.format(
-        fw=int(1030 * args.scale), fh=int(1404 * args.scale), scale=args.scale,
-        pct=int(args.scale * 100), n=len(shots), shots="\n".join(shots),
-    )
     out = Path(args.out)
-    out.write_text(page)
+    out.write_text(PAGE.replace("GROUPS", "\n".join(groups)))
     print(f"wrote {out}")
 
     if args.serve:

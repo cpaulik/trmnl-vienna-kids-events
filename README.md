@@ -1,7 +1,7 @@
 # Kinder Wien TRMNL
 
-A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Four events are
-picked at random each run and shown in a 2×2 grid with photo, venue and district, category,
+A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Three events are
+picked at random each run and shown side by side with photo, venue and district, category,
 age requirement, price, short description, upcoming dates and the source they came from.
 
 Sibling plugin to [Kino-Wien-TRMNL](https://github.com/cpaulik/Kino-Wien-TRMNL), same shape:
@@ -60,7 +60,7 @@ instant.
 | `INTERVAL` | `1800` | Seconds between runs |
 | `SOURCES` | all five | Comma-separated: `falter,wienxtra,umweltspuernasen,wiengv,tmw` |
 | `MAX_AGE_REQUIREMENT` | `4` | Drop events that require a higher minimum age |
-| `DISPLAY_COUNT` | `4` | Events per screen (2×2 grid) |
+| `DISPLAY_COUNT` | `3` | Events per screen (one column each) |
 | `DAYS_AHEAD` | `7` | Length of the event window, starting today |
 | `REGION` | `Wien` | Falter region filter |
 | `SKIP_CATEGORIES` | `Vortrag / Diskussion` | Comma-separated categories to ignore |
@@ -73,6 +73,20 @@ instant.
 | `CACHE_DIR` | script dir | Where `events_cache.json` lives |
 | `FALTER_MIN_RECOMMENDED` | `12` | Below this many age-appropriate recommendations, Falter widens to its full kids listing |
 | `WIENGV_MAX_DETAILS` | `140` | Cap on Stadt Wien detail-page fetches per day |
+
+## Layout
+
+The template is **fluid and landscape** — it hardcodes no frame, so the same markup fills
+TRMNL OG (800×480, 1-bit) and TRMNL V2 (1040×780, 4-bit). Type sizes and the photo band scale
+with viewport height, and panels taller than 600px get a bigger photo and a longer description.
+
+The grid puts **one column per event**, so `DISPLAY_COUNT` alone decides the density — 3 is
+comfortable on an OG, 4 fits if you prefer breadth over prose.
+
+Event photos are landscape (1.25–1.78 aspect), unlike film posters, so each card carries the
+photo as a band across the top rather than in a portrait poster slot. Roughly 80% of events
+have a photo; the Technisches Museum and Umweltspürnasen never provide one, and those cards
+give their text the whole cell instead.
 
 ## TRMNL plugin setup
 
@@ -92,7 +106,10 @@ uv venv .venv && uv pip install -p .venv/bin/python requests beautifulsoup4 pyth
 .venv/bin/python scraper.py --dry-run --refresh --sources wienxtra
 
 # render template.html with cached data into preview.html for a browser check
-.venv/bin/python preview.py --seed 3
+.venv/bin/python preview.py --device og,v2 --events 3,4 --with-nophoto
+
+# serve the preview over HTTP instead of opening the file
+.venv/bin/python preview.py --serve 8137
 ```
 
 `--refresh` ignores the daily cache, `--dry-run` works without a webhook URL.
