@@ -39,7 +39,7 @@
         {% endif %}
         <div class="dates">
           {% for d in event.d %}
-          <span class="date">{{ d.dat }} <span class="clock">{{ d.ti }}</span></span>
+          <span class="date">{{ d.dy }} <span class="clock">{{ d.t | join: ", " }}</span></span>
           {% endfor %}
           <span class="source">{% if event.x %}{{ event.x }} · {% endif %}{{ event.s }}</span>
         </div>

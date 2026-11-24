@@ -32,8 +32,9 @@ GRID_COLS = int(os.environ.get("GRID_COLS", "0"))              # 0 = derive from
 # between pushes instead of only when new data arrives.
 ROTATION_GROUPS = int(os.environ.get("ROTATION_GROUPS", "4"))   # screens per payload
 ROTATE_SECONDS = int(os.environ.get("ROTATE_SECONDS", "1800"))  # seconds per screen
-MAX_DATES = int(os.environ.get("MAX_DATES", "4"))              # dates shown per event
-MAX_DESC = int(os.environ.get("MAX_DESC", "330"))              # description chars
+MAX_DATES = int(os.environ.get("MAX_DATES", "3"))              # days shown per event
+MAX_TIMES = int(os.environ.get("MAX_TIMES", "3"))              # times shown per day
+MAX_DESC = int(os.environ.get("MAX_DESC", "240"))              # description chars
 RECOMMENDED_WEIGHT = float(os.environ.get("RECOMMENDED_WEIGHT", "3"))
 # TRMNL accepts 5kb of merge variables, 10kb for TRMNL+ subscribers
 PAYLOAD_LIMIT = int(os.environ.get("PAYLOAD_LIMIT", "4800"))
@@ -193,6 +194,29 @@ def pick(pool, count):
     return chosen
 
 
+def group_dates(occurrences, max_days, max_times=None):
+    """Group occurrences by day: [{"dy": "Mi 25.11.", "t": ["09:00", "10:15"]}].
+
+    One entry per day rather than per occurrence. A museum with four slots on the
+    same day cost about 135 bytes as separate records and repeated its date four
+    times on screen; grouped it is nearer 55 and reads as one line.
+    """
+    max_times = max_times or MAX_TIMES
+    days, order = {}, []
+    for occ in occurrences:
+        day = occ["dat"]
+        if day not in days:
+            days[day] = []
+            order.append(day)
+            if len(order) > max_days:
+                order.pop()
+                days.pop(day)
+                continue
+        if len(days[day]) < max_times and occ["ti"] not in days[day]:
+            days[day].append(occ["ti"])
+    return [{"dy": day, "t": days[day]} for day in order]
+
+
 def shape(event, max_dates, desc_limit, with_price=True):
     out = {
         "t": c.trim(event["t"], 70),
@@ -201,7 +225,7 @@ def shape(event, max_dates, desc_limit, with_price=True):
         "a": event.get("a", ""),
         "p": event.get("p", ""),
         "s": event.get("s", ""),
-        "d": [{"dat": d["dat"], "ti": d["ti"]} for d in event.get("d", [])[:max_dates]],
+        "d": group_dates(event.get("d", []), max_dates),
     }
     if event.get("w"):
         out["w"] = event["w"]
@@ -237,7 +261,7 @@ def build_payload(selection, today, days_ahead=None, per_screen=None):
     days_ahead = c.DAYS_AHEAD if days_ahead is None else days_ahead
     per_screen = per_screen or DISPLAY_COUNT
     end = today + timedelta(days=days_ahead - 1)
-    tiers = ((MAX_DESC, MAX_DATES, True), (240, 3, True), (160, 3, False), (0, 2, False))
+    tiers = ((MAX_DESC, MAX_DATES, True), (160, 3, True), (100, 2, False), (0, 2, False))
 
     payload = size = None
     groups = max(1, len(selection) // per_screen)
@@ -253,7 +277,9 @@ def build_payload(selection, today, days_ahead=None, per_screen=None):
                     "rotate": ROTATE_SECONDS,
                 }
             }
-            size = len(json.dumps(payload, ensure_ascii=False))
+            # TRMNL measures the payload in bytes, and German text is full of
+            # multi-byte characters, so count encoded bytes rather than characters
+            size = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
             # only sacrifice description quality once a screen has been dropped
             if size <= PAYLOAD_LIMIT and (desc_limit == MAX_DESC or groups == 1):
                 return payload, size

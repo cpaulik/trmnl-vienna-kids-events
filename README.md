@@ -88,17 +88,42 @@ something different every half hour.
 
 How many screens fit depends on how wordy the selected events are, so `build_payload` works it
 out per run: it keeps the most screens it can **at full description length**, and only shortens
-text once it is down to a single screen. Measured against a live pool on the 5 kB tier:
+text once it is down to a single screen. A typical draw lands on two or three screens.
 
-| screens | events | description cap | bytes | fits 5 kB | descriptions truncated |
-|---|---|---|---|---|---|
-| 2 | 8 | 330 | 3610 | yes | 17% |
-| 3 | 12 | 160 | 4782 | barely | 54% |
-| 4 | 16 | none | 4126 | yes | 100% |
-| 5 | 20 | — | 7822 | no | — |
+### Where the 5 kB actually goes
 
-So two to three screens is the realistic range here. On TRMNL+ (10 kB) raise `PAYLOAD_LIMIT`
-and four screens at full length fit without any other change.
+5 kB sounds roomy until you look at what a single event costs. Measured on a live payload,
+descriptions are 44% of it and everything else is structure:
+
+| field | share | avg bytes/event |
+|---|---|---|
+| description | 44% | 176 |
+| dates | 22% | 87 |
+| image URL | 9% | 38 |
+| title | 7% | 28 |
+| venue | 7% | 26 |
+| category, source, district, age, price | 11% | 44 |
+
+So an event costs roughly 400 bytes, and the budget is **not** dominated by overhead you could
+engineer away — a 240-character description is 240 of those bytes by definition. Fourteen
+descriptions at the 330 cap would fill 5 kB on their own, before a single title or date.
+
+That makes description length the only real lever:
+
+| description cap | events | screens | bytes |
+|---|---|---|---|
+| 330 | 8 | 2 | 3516 |
+| **240 (default)** | **12** | **3** | **4697** |
+| 160 | 12 | 3 | 4294 |
+| none | 16 | 4 | 3842 |
+
+Two things that did help: dates are grouped per day (`{"dy": "Mi 25.11.", "t": ["09:00",
+"10:15"]}`) instead of one record per occurrence, which saves about 25% on that field and reads
+as one line rather than four; and the size check counts **UTF-8 bytes**, not characters, since
+German text is full of multi-byte ones — `ä` is two bytes and `–` and `·` are three each.
+Counting characters understated a 3.6 kB payload by about 46 bytes.
+
+On TRMNL+ (10 kB) raise `PAYLOAD_LIMIT` and four to five screens fit at full length.
 
 If the template ever renders without `trmnl.system.timestamp_utc`, the slot computes to 0 and
 the first screen shows — the markup degrades to the old single-screen behaviour rather than
@@ -120,8 +145,9 @@ breaking.
 | `RECOMMENDED_WEIGHT` | `3` | Pick weight for Falter recommendations |
 | `ROTATION_GROUPS` | `4` | Screens to attempt per payload; trimmed to what fits |
 | `ROTATE_SECONDS` | `1800` | How long each screen is shown before the next |
-| `MAX_DATES` | `4` | Upcoming dates shown per event |
-| `MAX_DESC` | `330` | Description characters before trimming |
+| `MAX_DATES` | `3` | Days shown per event |
+| `MAX_TIMES` | `3` | Times shown per day |
+| `MAX_DESC` | `240` | Description characters before trimming |
 | `CACHE_DATES` | `8` | Upcoming dates kept per event in the cache |
 | `FETCH_DELAY` | `0.4` | Seconds between requests |
 | `PAYLOAD_LIMIT` | `4800` | Byte budget for the webhook payload (TRMNL allows 5 KB, 10 KB with TRMNL+) |
@@ -151,7 +177,7 @@ than a short cell in a 3×2 grid.
 The photo band is deliberately short (23% of the card) so the text, not the picture, gets the
 space. Description length is tuned so the server-side trim and the CSS clamp roughly coincide:
 at four events per screen a card fits about five lines, and `MAX_DESC` is set so only the
-longest ~17% of descriptions end in an ellipsis.
+longest ~29% of descriptions end in an ellipsis.
 
 Event photos are landscape (1.25–1.78 aspect), unlike film posters, so each card carries the
 photo as a band across the top rather than in a portrait poster slot. Roughly 80% of events
