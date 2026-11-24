@@ -5,3 +5,4 @@ preview.html
 *.log
 explore*.py
 .env
+template.txt
