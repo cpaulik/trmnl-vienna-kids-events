@@ -1,7 +1,7 @@
 # Kinder Wien TRMNL
 
-A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Three events are
-picked at random each run and shown side by side with photo, venue and district, category,
+A [TRMNL](https://usetrmnl.com/) plugin that displays kids events in Vienna. Six events are
+picked at random each run and shown in a 3×2 grid with photo, venue and district, category,
 age requirement, price, short description, upcoming dates and the source they came from.
 
 Sibling plugin to [Kino-Wien-TRMNL](https://github.com/cpaulik/Kino-Wien-TRMNL), same shape:
@@ -47,7 +47,8 @@ Then start the container:
 docker compose up -d
 ```
 
-The scraper runs immediately on start and then every 30 minutes. The daily event pool is
+The scraper runs immediately on start and then every 30 minutes, which sits well inside
+TRMNL's webhook rate limit of 12 pushes per hour (30 with TRMNL+). The daily event pool is
 cached in a named Docker volume so restarts don't re-fetch unnecessarily. A full scrape takes
 a few minutes (roughly 250 requests, paced by `FETCH_DELAY`); the other 47 runs of the day are
 instant.
@@ -60,7 +61,8 @@ instant.
 | `INTERVAL` | `1800` | Seconds between runs |
 | `SOURCES` | all five | Comma-separated: `falter,wienxtra,umweltspuernasen,wiengv,tmw` |
 | `MAX_AGE_REQUIREMENT` | `4` | Drop events that require a higher minimum age |
-| `DISPLAY_COUNT` | `3` | Events per screen (one column each) |
+| `DISPLAY_COUNT` | `6` | Events per screen |
+| `GRID_COLS` | auto | Grid columns; `0` derives them from `DISPLAY_COUNT` |
 | `DAYS_AHEAD` | `7` | Length of the event window, starting today |
 | `REGION` | `Wien` | Falter region filter |
 | `SKIP_CATEGORIES` | `Vortrag / Diskussion` | Comma-separated categories to ignore |
@@ -69,19 +71,29 @@ instant.
 | `MAX_DESC` | `200` | Description characters before trimming |
 | `CACHE_DATES` | `8` | Upcoming dates kept per event in the cache |
 | `FETCH_DELAY` | `0.4` | Seconds between requests |
-| `PAYLOAD_LIMIT` | `2000` | Byte budget for the webhook payload |
+| `PAYLOAD_LIMIT` | `4800` | Byte budget for the webhook payload (TRMNL allows 5 KB, 10 KB with TRMNL+) |
 | `CACHE_DIR` | script dir | Where `events_cache.json` lives |
 | `FALTER_MIN_RECOMMENDED` | `12` | Below this many age-appropriate recommendations, Falter widens to its full kids listing |
 | `WIENGV_MAX_DETAILS` | `140` | Cap on Stadt Wien detail-page fetches per day |
 
 ## Layout
 
-The template is **fluid and landscape** — it hardcodes no frame, so the same markup fills
-TRMNL OG (800×480, 1-bit) and TRMNL V2 (1040×780, 4-bit). Type sizes and the photo band scale
-with viewport height, and panels taller than 600px get a bigger photo and a longer description.
+The template is **fluid and landscape** and hardcodes no frame.
 
-The grid puts **one column per event**, so `DISPLAY_COUNT` alone decides the density — 3 is
-comfortable on an OG, 4 fits if you prefer breadth over prose.
+Device geometry worth knowing: markup is rendered at **CSS pixels**, which is not the panel
+resolution. A **TRMNL X** renders at **1040×780** and scales by its `pixel-ratio` of 1.8 onto
+the 1872×1404 physical panel (`screen--v2` in the framework carries the same canvas). A
+**TRMNL OG** renders at **800×480**. Both are landscape by default. Designing against 1872 or
+1404 directly gives you a portrait-shaped layout that does not match any device.
+
+Every size here is a **container query unit** (`cqh`/`cqw`) rather than a viewport unit, as the
+TRMNL X guide recommends: viewport units still refer to the whole screen inside mashup slots,
+container units follow the card the content actually sits in. Each card is its own query
+container, so a tall single-row cell automatically gets a bigger photo and a longer description
+than a short cell in a 3×2 grid.
+
+`DISPLAY_COUNT` alone decides the density — the scraper sends a `cols` merge variable
+(6 → 3×2, 4 → 2×2, 3 → 1×3), which the grid reads as `--cols`. Override with `GRID_COLS`.
 
 Event photos are landscape (1.25–1.78 aspect), unlike film posters, so each card carries the
 photo as a band across the top rather than in a portrait poster slot. Roughly 80% of events
@@ -106,7 +118,7 @@ uv venv .venv && uv pip install -p .venv/bin/python requests beautifulsoup4 pyth
 .venv/bin/python scraper.py --dry-run --refresh --sources wienxtra
 
 # render template.html with cached data into preview.html for a browser check
-.venv/bin/python preview.py --device og,v2 --events 3,4 --with-nophoto
+.venv/bin/python preview.py --device x,og --events 6,4 --with-nophoto
 
 # serve the preview over HTTP instead of opening the file
 .venv/bin/python preview.py --serve 8137

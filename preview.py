@@ -5,14 +5,15 @@ layout can be checked in a browser before pushing anything to TRMNL.
 
 Needs the Liquid renderer that TRMNL uses:  uv pip install python-liquid
 
-Device frames (landscape is the TRMNL default):
-  og  800x480   TRMNL OG, 1-bit
-  v2  1040x780  TRMNL V2, 4-bit
+Device frames (landscape is the TRMNL default). Sizes are CSS pixels, which is
+what the markup renders at; the panel is pixel-ratio times larger:
+  og  800x480   TRMNL OG, 1-bit, ratio 1.0
+  x   1040x780  TRMNL X, 4-bit, ratio 1.8 -> 1872x1404 physical panel
 
 Usage:
-  python preview.py                                  # OG frame, 3 events, 3 samples
-  python preview.py --device v2 --events 4
-  python preview.py --device og,v2 --events 3,4      # compare frames and densities
+  python preview.py                                  # X frame, DISPLAY_COUNT events
+  python preview.py --device x --events 6
+  python preview.py --device og,x --events 4,6       # compare frames and densities
   python preview.py --sources TMW --with-nophoto
   python preview.py --serve 8137
 """
@@ -29,8 +30,10 @@ import scraper
 HERE = Path(__file__).parent
 
 DEVICES = {
-    "og": (800, 480, "TRMNL OG 800×480 (1-bit)"),
-    "v2": (1040, 780, "TRMNL V2 1040×780 (4-bit)"),
+    "og": (800, 480, "TRMNL OG — 800×480 CSS px, 1-bit"),
+    "x": (1040, 780,
+          "TRMNL X — 1040×780 CSS px, ×1.8 = 1872×1404 Panel, 4-bit"),
+    "v2": (1040, 780, "TRMNL V2 — 1040×780 CSS px, 4-bit"),
 }
 
 PAGE = """<!doctype html>
@@ -55,8 +58,9 @@ PAGE = """<!doctype html>
 <body>
 <h1>Kinder Wien &mdash; Layout-Vorschau</h1>
 <p class="note">Echte Renders des Plugin-Templates, 1:1 in Gerätegröße. Das Template ist
-fluid (kein fixes Format), deshalb füllt dasselbe Markup jedes Gerät.
-Auf dem Gerät erscheint alles in Graustufen-E-Ink.</p>
+fluid (kein fixes Format) und misst alles in Container-Einheiten, deshalb füllt
+dasselbe Markup jedes Gerät. Der X skaliert diese 1040&times;780 mit Faktor 1,8 auf
+sein 1872&times;1404-Panel; auf dem Gerät sind es 16 Graustufen.</p>
 GROUPS
 </body>
 </html>
@@ -88,7 +92,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--samples", type=int, default=3)
-    ap.add_argument("--device", default="og", help="og, v2 or a comma-separated list")
+    ap.add_argument("--device", default="x", help="x, og, v2 or a comma-separated list")
     ap.add_argument("--events", default=None,
                     help="events per screen; comma-separated list to compare")
     ap.add_argument("--sources", help="only pick events from these sources (LABEL names)")

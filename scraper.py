@@ -25,11 +25,13 @@ from sources import common as c
 
 CACHE_FILE = Path(os.environ.get("CACHE_DIR", Path(__file__).parent)) / "events_cache.json"
 SOURCE_NAMES = [s for s in os.environ.get("SOURCES", ",".join(sources.DEFAULT_ORDER)).split(",")]
-DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "3"))      # one column per event
+DISPLAY_COUNT = int(os.environ.get("DISPLAY_COUNT", "6"))      # events per screen
+GRID_COLS = int(os.environ.get("GRID_COLS", "0"))              # 0 = derive from DISPLAY_COUNT
 MAX_DATES = int(os.environ.get("MAX_DATES", "4"))              # dates shown per event
 MAX_DESC = int(os.environ.get("MAX_DESC", "200"))              # description chars
 RECOMMENDED_WEIGHT = float(os.environ.get("RECOMMENDED_WEIGHT", "3"))
-PAYLOAD_LIMIT = int(os.environ.get("PAYLOAD_LIMIT", "2000"))   # TRMNL merge_variables limit
+# TRMNL accepts 5kb of merge variables, 10kb for TRMNL+ subscribers
+PAYLOAD_LIMIT = int(os.environ.get("PAYLOAD_LIMIT", "4800"))
 # Categories that the sources file under "kids" but that are not kid activities
 SKIP_CATEGORIES = {s.strip().lower() for s in
                    os.environ.get("SKIP_CATEGORIES", "Vortrag / Diskussion").split(",")
@@ -209,6 +211,17 @@ def shape(event, max_dates, desc_limit, with_price=True):
     return {k: v for k, v in out.items() if v}
 
 
+def grid_cols(count):
+    """Column count for the template: 6 -> 3x2, 4 -> 2x2, 3 -> 1x3."""
+    if GRID_COLS:
+        return GRID_COLS
+    if count >= 5:
+        return 3
+    if count == 4:
+        return 2
+    return max(count, 1)
+
+
 def build_payload(selection, today, days_ahead=None):
     """Shape the selection, shrinking descriptions/dates until it fits TRMNL."""
     days_ahead = c.DAYS_AHEAD if days_ahead is None else days_ahead
@@ -219,6 +232,7 @@ def build_payload(selection, today, days_ahead=None):
             "merge_variables": {
                 "events": [shape(e, max_dates, desc_limit, with_price) for e in selection],
                 "week": f"{today.strftime('%-d.')}–{end.strftime('%-d. %b')}",
+                "cols": grid_cols(len(selection)),
             }
         }
         size = len(json.dumps(payload, ensure_ascii=False))
